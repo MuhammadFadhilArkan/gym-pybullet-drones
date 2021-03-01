@@ -28,7 +28,7 @@ import matplotlib.pyplot as plt
 import gym
 from gym import error, spaces, utils
 from gym.utils import seeding
-from gym.spaces import Box, Dict
+from gym.spaces import Box, Dict, Discrete
 import torch
 import torch.nn as nn
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork
@@ -50,6 +50,7 @@ from gym_pybullet_drones.envs.BaseAviary import DroneModel, Physics
 from gym_pybullet_drones.envs.multi_agent_rl.FlockAviary import FlockAviary
 from gym_pybullet_drones.envs.multi_agent_rl.LeaderFollowerAviary import LeaderFollowerAviary
 from gym_pybullet_drones.envs.multi_agent_rl.MeetupAviary import MeetupAviary
+from gym_pybullet_drones.envs.multi_agent_rl.PayloadCoop import PayloadCoop
 from gym_pybullet_drones.envs.single_agent_rl.BaseSingleAgentAviary import ActionType, ObservationType
 from gym_pybullet_drones.utils.Logger import Logger
 
@@ -110,12 +111,14 @@ class FillInActions(DefaultCallbacks):
         to_update = postprocessed_batch[SampleBatch.CUR_OBS]
         other_id = 1 if agent_id == 0 else 0
         action_encoder = ModelCatalog.get_preprocessor_for_space( 
-                                                                 # Box(-np.inf, np.inf, (ACTION_VEC_SIZE,), np.float32) # Unbounded
-                                                                 Box(-1, 1, (ACTION_VEC_SIZE,), np.float32) # Bounded
+                                                                 Box(-1, 1, (ACTION_VEC_SIZE,), np.float32) # for box
                                                                  )
+       # action_encoder = ModelCatalog.get_preprocessor_for_space( 
+       #                                                           Discrete(ACTION_VEC_SIZE) # for discrete
+       #                                                          )
         _, opponent_batch = original_batches[other_id]
-        # opponent_actions = np.array([action_encoder.transform(a) for a in opponent_batch[SampleBatch.ACTIONS]]) # Unbounded
-        opponent_actions = np.array([action_encoder.transform(np.clip(a, -1, 1)) for a in opponent_batch[SampleBatch.ACTIONS]]) # Bounded
+        #opponent_actions = np.array([action_encoder.transform(a) for a in opponent_batch[SampleBatch.ACTIONS]]) # for discrete
+        opponent_actions = np.array([action_encoder.transform(np.clip(a, -1, 1)) for a in opponent_batch[SampleBatch.ACTIONS]]) # for box
         to_update[:, -ACTION_VEC_SIZE:] = opponent_actions
 
 ############################################################
@@ -124,12 +127,12 @@ def central_critic_observer(agent_obs, **kw):
         0: {
             "own_obs": agent_obs[0],
             "opponent_obs": agent_obs[1],
-            "opponent_action": np.zeros(ACTION_VEC_SIZE), # Filled in by FillInActions
+            "opponent_action": 0 if ACTION_VEC_SIZE == 5  else np.zeros(ACTION_VEC_SIZE), # Filled in by FillInActions
         },
         1: {
             "own_obs": agent_obs[1],
             "opponent_obs": agent_obs[0],
-            "opponent_action": np.zeros(ACTION_VEC_SIZE), # Filled in by FillInActions
+            "opponent_action": 0 if ACTION_VEC_SIZE == 5  else np.zeros(ACTION_VEC_SIZE), # Filled in by FillInActions
         },
     }
     return new_obs
@@ -139,23 +142,23 @@ if __name__ == "__main__":
 
     #### Define and parse (optional) arguments for the script ##
     parser = argparse.ArgumentParser(description='Multi-agent reinforcement learning experiments script')
-    parser.add_argument('--num_drones',  default=2,                 type=int,                                                                 help='Number of drones (default: 2)', metavar='')
-    parser.add_argument('--env',         default='leaderfollower',  type=str,             choices=['leaderfollower', 'flock', 'meetup'],      help='Help (default: ..)', metavar='')
-    parser.add_argument('--obs',         default='kin',             type=ObservationType,                                                     help='Help (default: ..)', metavar='')
-    parser.add_argument('--act',         default='one_d_rpm',       type=ActionType,                                                          help='Help (default: ..)', metavar='')
-    parser.add_argument('--algo',        default='cc',              type=str,             choices=['cc'],                                     help='Help (default: ..)', metavar='')
-    parser.add_argument('--workers',     default=0,                 type=int,                                                                 help='Help (default: ..)', metavar='')        
+    parser.add_argument('--num_drones',  default=2,            type=int,                                                                 help='Number of drones (default: 2)', metavar='')
+    parser.add_argument('--env',         default='payloadcoop',      type=str,             choices=['leaderfollower', 'flock', 'meetup', 'payloadcoop'],      help='Help (default: ..)', metavar='')
+    parser.add_argument('--obs',         default='payload',        type=ObservationType,                                                     help='Help (default: ..)', metavar='')
+    parser.add_argument('--act',         default='xyz_yaw',  type=ActionType,                                                          help='Help (default: ..)', metavar='')
+    parser.add_argument('--algo',        default='cc',         type=str,             choices=['cc'],                                     help='Help (default: ..)', metavar='')
+    parser.add_argument('--workers',     default=1,            type=int,                                                                 help='Help (default: ..)', metavar='')        
     ARGS = parser.parse_args()
 
     #### Save directory ########################################
-    filename = os.path.dirname(os.path.abspath(__file__))+'/results/save-'+ARGS.env+'-'+str(ARGS.num_drones)+'-'+ARGS.algo+'-'+ARGS.obs.value+'-'+ARGS.act.value+'-'+datetime.now().strftime("%m.%d.%Y_%H.%M.%S")
+    filename = os.path.dirname('/content/drive/MyDrive'+'/results/save-'+ARGS.env+'-'+str(ARGS.num_drones)+'-'+ARGS.algo+'-'+ARGS.obs.value+'-'+ARGS.act.value+'-'+datetime.now().strftime("%m.%d.%Y_%H.%M.%S")+'/')
     if not os.path.exists(filename):
         os.makedirs(filename+'/')
 
-    #### Print out current git commit hash #####################
-    git_commit = subprocess.check_output(["git", "describe", "--tags"]).strip()
-    with open(filename+'/git_commit.txt', 'w+') as f:
-        f.write(str(git_commit))
+    # #### Print out current git commit hash #####################
+    # git_commit = subprocess.check_output(["git", "describe", "--tags"]).strip()
+    # with open(filename+'/git_commit.txt', 'w+') as f:
+    #     f.write(str(git_commit))
 
     #### Constants, and errors #################################
     if ARGS.obs==ObservationType.KIN:
@@ -163,15 +166,23 @@ if __name__ == "__main__":
     elif ARGS.obs==ObservationType.RGB:
         print("[ERROR] ObservationType.RGB for multi-agent systems not yet implemented")
         exit()
+    elif ARGS.obs == ObservationType.PAYLOAD_Z_CONST:
+        OWN_OBS_VEC_SIZE = 4+2+ 2*(ARGS.num_drones - 1)
+    elif ARGS.obs == ObservationType.PAYLOAD:
+        OWN_OBS_VEC_SIZE = 4+3+ 3*(ARGS.num_drones - 1)  
     else:
         print("[ERROR] unknown ObservationType")
         exit()
+
     if ARGS.act in [ActionType.ONE_D_RPM, ActionType.ONE_D_DYN, ActionType.ONE_D_PID]:
         ACTION_VEC_SIZE = 1
-    elif ARGS.act in [ActionType.RPM, ActionType.DYN, ActionType.VEL]:
+    elif ARGS.act in [ActionType.RPM, ActionType.DYN, ActionType.VEL, ActionType.XYZ_YAW]:
         ACTION_VEC_SIZE = 4
-    elif ARGS.act == ActionType.PID:
+    elif ARGS.act in [ActionType.PID, ActionType.XY_YAW]:
         ACTION_VEC_SIZE = 3
+    elif ARGS.act in [ActionType.JOYSTICK]:
+        ACTION_VEC_SIZE = 5
+
     else:
         print("[ERROR] unknown ActionType")
         exit()
@@ -209,11 +220,18 @@ if __name__ == "__main__":
                                                            act=ARGS.act
                                                            )
                      )
+    elif ARGS.env == 'payloadcoop':
+        register_env(temp_env_name, lambda _: PayloadCoop(num_drones=ARGS.num_drones,
+                                                           aggregate_phy_steps=shared_constants.AGGR_PHY_STEPS,
+                                                           obs=ARGS.obs,
+                                                           act=ARGS.act
+                                                           ))
     else:
         print("[ERROR] environment not yet implemented")
         exit()
 
     #### Unused env to extract the act and obs spaces ##########
+
     if ARGS.env == 'flock':
         temp_env = FlockAviary(num_drones=ARGS.num_drones,
                                aggregate_phy_steps=shared_constants.AGGR_PHY_STEPS,
@@ -232,6 +250,12 @@ if __name__ == "__main__":
                                 obs=ARGS.obs,
                                 act=ARGS.act
                                 )
+    elif ARGS.env == 'payloadcoop':
+        temp_env = PayloadCoop(num_drones=ARGS.num_drones,
+                                aggregate_phy_steps=shared_constants.AGGR_PHY_STEPS,
+                                obs=ARGS.obs,
+                                act=ARGS.act,
+                                )
     else:
         print("[ERROR] environment not yet implemented")
         exit()
@@ -241,6 +265,7 @@ if __name__ == "__main__":
         "opponent_action": temp_env.action_space[0],
     })
     action_space = temp_env.action_space[0]
+    print("action space: ",action_space)
 
     #### Note ##################################################
     # RLlib will create ``num_workers + 1`` copies of the
@@ -258,6 +283,8 @@ if __name__ == "__main__":
         "batch_mode": "complete_episodes",
         "callbacks": FillInActions,
         "framework": "torch",
+        #"lr":
+        #"gamma":
     }
 
     #### Set up the model parameters of the trainer's config ###
@@ -277,9 +304,9 @@ if __name__ == "__main__":
 
     #### Ray Tune stopping conditions ##########################
     stop = {
-        "timesteps_total": 120000, # 100000 ~= 10'
-        # "episode_reward_mean": 0,
-        # "training_iteration": 0,
+        # "timesteps_total": 15000, # 8000,
+        # "episode_reward_mean": 1000,
+         "training_iteration": 10000,
     }
 
     #### Train #################################################
@@ -287,9 +314,12 @@ if __name__ == "__main__":
         "PPO",
         stop=stop,
         config=config,
-        verbose=True,
+        verbose=3,
         checkpoint_at_end=True,
         local_dir=filename,
+        checkpoint_freq=10,
+        max_failures=-1,
+        # restore="/experiments/learning/results/save-payloadcoop-2-cc-payload_z_const-xy_yaw-02.27.2021_09.30.54/checkpoint.txt"
     )
     # check_learning_achieved(results, 1.0)
 

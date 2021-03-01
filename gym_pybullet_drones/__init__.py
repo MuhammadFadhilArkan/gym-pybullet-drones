@@ -60,3 +60,8 @@ register(
     id='meetup-aviary-v0',
     entry_point='gym_pybullet_drones.envs.multi_agent_rl:MeetupAviary',
 )
+
+register(
+    id ='payloadcoop-aviary-v0',
+    entry_point='gym_pybullet_drones.envs.multi_agent_rl:PayloadCoop',
+)

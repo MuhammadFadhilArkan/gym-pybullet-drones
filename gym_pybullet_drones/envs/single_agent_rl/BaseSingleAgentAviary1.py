@@ -21,17 +21,14 @@ class ActionType(Enum):
     ONE_D_RPM = "one_d_rpm"     # 1D (identical input to all motors) with RPMs
     ONE_D_DYN = "one_d_dyn"     # 1D (identical input to all motors) with desired thrust and torques
     ONE_D_PID = "one_d_pid"     # 1D (identical input to all motors) with PID control
-    JOYSTICK =  "joystick"      # add trajectory to 0: X pos, 1: Y pos 3: X neg, 4: Y neg
-    XY_YAW = "xy_yaw"           # x, y and yaw
-    XYZ_YAW = "xyz_yaw"         # x, y, z, and yaw
+
 ################################################################################
 
 class ObservationType(Enum):
     """Observation type enumeration class."""
     KIN = "kin"     # Kinematic information (pose, linear and angular velocities)
-    RGB = "rgb"     # RGB camera capture in each drone's POV 
-    PAYLOAD_Z_CONST = "payload_z_const"
-    PAYLOAD = "payload"
+    RGB = "rgb"     # RGB camera capture in each drone's POV
+
 ################################################################################
 
 class BaseSingleAgentAviary(BaseAviary):
@@ -52,10 +49,12 @@ class BaseSingleAgentAviary(BaseAviary):
                  act: ActionType=ActionType.RPM
                  ):
         """Initialization of a generic single agent RL environment.
+
         Attribute `num_drones` is automatically set to 1; `vision_attributes`
         and `dynamics_attributes` are selected based on the choice of `obs`
         and `act`; `obstacles` is set to True and overridden with landmarks for
         vision applications; `user_debug_gui` is set to False for performance.
+
         Parameters
         ----------
         drone_model : DroneModel, optional
@@ -78,6 +77,7 @@ class BaseSingleAgentAviary(BaseAviary):
             The type of observation space (kinematic information or vision)
         act : ActionType, optional
             The type of action space (1 or 3D; RPMS, thurst and torques, waypoint or velocity with PID control; etc.)
+
         """
         vision_attributes = True if obs == ObservationType.RGB else False
         dynamics_attributes = True if act in [ActionType.DYN, ActionType.ONE_D_DYN] else False
@@ -96,8 +96,8 @@ class BaseSingleAgentAviary(BaseAviary):
                     self.TUNED_P_ATT = np.array([70000., 70000., 60000.])
                     self.TUNED_I_ATT = np.array([.0, .0, 500.])
                     self.TUNED_D_ATT = np.array([20000., 20000., 12000.])
-            elif drone_model in [DroneModel.HB, DroneModel.ARDRONE2]:
-                self.ctrl = SimplePIDControl(drone_model=drone_model)
+            elif drone_model == DroneModel.HB:
+                self.ctrl = SimplePIDControl(drone_model=DroneModel.HB)
                 if act == ActionType.TUN:
                     self.TUNED_P_POS = np.array([.1, .1, .2])
                     self.TUNED_I_POS = np.array([.0001, .0001, .0001])
@@ -133,8 +133,10 @@ class BaseSingleAgentAviary(BaseAviary):
 
     def _addObstacles(self):
         """Add obstacles to the environment.
+
         Only if the observation is of type RGB, 4 landmarks are added.
         Overrides BaseAviary's method.
+
         """
         if self.OBS_TYPE == ObservationType.RGB:
             p.loadURDF("block.urdf",
@@ -164,10 +166,12 @@ class BaseSingleAgentAviary(BaseAviary):
 
     def _actionSpace(self):
         """Returns the action space of the environment.
+
         Returns
         -------
         ndarray
             A Box() of size 1, 3, 4, or 6 depending on the action type.
+
         """
         if self.ACT_TYPE == ActionType.TUN:
             size = 6
@@ -191,19 +195,23 @@ class BaseSingleAgentAviary(BaseAviary):
                           action
                           ):
         """Pre-processes the action passed to `.step()` into motors' RPMs.
+
         Parameter `action` is processed differenly for each of the different
         action types: `action` can be of length 1, 3, 4, or 6 and represent 
         RPMs, desired thrust and torques, the next target position to reach 
         using PID control, a desired velocity vector, new PID coefficients, etc.
+
         Parameters
         ----------
         action : ndarray
             The input action for each drone, to be translated into RPMs.
+
         Returns
         -------
         ndarray
             (4,)-shaped array of ints containing to clipped RPMs
             commanded to the 4 motors of each drone.
+
         """
         if self.ACT_TYPE == ActionType.TUN:
             self.ctrl.setPIDCoefficients(p_coeff_pos=(action[0]+1)*self.TUNED_P_POS,
@@ -289,10 +297,12 @@ class BaseSingleAgentAviary(BaseAviary):
 
     def _observationSpace(self):
         """Returns the observation space of the environment.
+
         Returns
         -------
         ndarray
             A Box() of shape (H,W,4) or (12,) depending on the observation type.
+
         """
         if self.OBS_TYPE == ObservationType.RGB:
             return spaces.Box(low=0,
@@ -321,10 +331,12 @@ class BaseSingleAgentAviary(BaseAviary):
 
     def _computeObs(self):
         """Returns the current observation of the environment.
+
         Returns
         -------
         ndarray
             A Box() of shape (H,W,4) or (12,) depending on the observation type.
+
         """
         if self.OBS_TYPE == ObservationType.RGB:
             if self.step_counter%self.IMG_CAPTURE_FREQ == 0: 
@@ -357,10 +369,13 @@ class BaseSingleAgentAviary(BaseAviary):
                                state
                                ):
         """Normalizes a drone's state to the [-1,1] range.
+
         Must be implemented in a subclass.
+
         Parameters
         ----------
         state : ndarray
             Array containing the non-normalized state of a single drone.
+
         """
         raise NotImplementedError
